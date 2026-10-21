@@ -314,6 +314,19 @@
   }
   .add:active{background:#f0f4f8}
 
+  /* ---------- 只读模式（打开分享链接时） ---------- */
+  body.ro .edit{
+    cursor:default;
+    border-bottom-color:transparent;
+    padding-bottom:calc(var(--s) * 2);
+    background:none;
+  }
+  body.ro .edit .pen,
+  body.ro .thumb .del,
+  body.ro .add,
+  body.ro .foot,
+  body.ro #lbDel{display:none}
+
   /* ---------- 底部 ---------- */
   .foot{
     padding:calc(var(--s) * 24) 0 calc(var(--s) * 10);
@@ -796,6 +809,10 @@
 
   var state = JSON.parse(JSON.stringify(DEFAULT));
 
+  /* 打开分享链接（#/?d=...）时进入只读模式 */
+  var READONLY = false;
+  function phText() { return READONLY ? '—' : '点击填写'; }
+
   var $ = function (id) { return document.getElementById(id); };
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
@@ -841,19 +858,19 @@
   }
 
   function renderText() {
-    $('vName').textContent = state.name || '点击填写';
+    $('vName').textContent = state.name || phText();
     $('vName').classList.toggle('ph', !state.name);
-    $('vSub').textContent = state.sub || '点击填写';
+    $('vSub').textContent = state.sub || phText();
     $('vSub').classList.toggle('ph', !state.sub);
     var av = $('avatar');
     av.textContent = shortName(state.name);
     av.classList.toggle('small', av.textContent.length > 2);
-    $('vReason').textContent = state.reason || '点击填写';
+    $('vReason').textContent = state.reason || phText();
     $('vReason').classList.toggle('ph', !state.reason);
-    $('vDest').textContent = state.dest || '点击填写';
+    $('vDest').textContent = state.dest || phText();
     $('vDest').classList.toggle('ph', !state.dest);
     var c = [state.cName, state.cPhone].filter(Boolean).join('  ');
-    $('vContact').textContent = c || '点击填写';
+    $('vContact').textContent = c || phText();
     $('vContact').classList.toggle('ph', !c);
   }
 
@@ -962,6 +979,7 @@
 
   document.querySelectorAll('[data-edit]').forEach(function (el) {
     el.addEventListener('click', function () {
+      if (READONLY) return;
       var f = el.getAttribute('data-edit');
       currentField = f;
       $('sheetTitle').textContent = TITLES[f] || '修改';
@@ -1020,6 +1038,7 @@
 
   /* ---------- 附件 ---------- */
   $('fileInput').addEventListener('change', function (e) {
+    if (READONLY) { e.target.value = ''; return; }
     var files = Array.prototype.slice.call(e.target.files || []);
     if (!files.length) return;
     files.forEach(function (f) {
@@ -1046,7 +1065,7 @@
   $('lbClose').addEventListener('click', closeLightbox);
   $('lightbox').addEventListener('click', function (e) { if (e.target === $('lightbox')) closeLightbox(); });
   $('lbDel').addEventListener('click', function () {
-    if (lbIndex < 0) return;
+    if (READONLY || lbIndex < 0) return;
     state.atts.splice(lbIndex, 1);
     closeLightbox();
     renderAtts();
@@ -1181,7 +1200,11 @@
     if (!m) return;
     try {
       var p = decodePayload(m[1]);
-      if (p && applyPack(p)) renderAll();
+      if (p && applyPack(p)) {
+        READONLY = true;
+        document.body.classList.add('ro');
+        renderAll();
+      }
     } catch (e) {}
   }
   restoreFromHash();
@@ -1189,8 +1212,8 @@
   /* 同一标签页内粘贴了另一个分享链接时，同步刷新 */
   window.addEventListener('hashchange', restoreFromHash);
 
-  /* 分享地址前缀：统一使用短链接，分享出去不暴露 GitHub 用户名和仓库名 */
-  var SHARE_PREFIX = 'https://tinyurl.com/2bdac6k3';
+  /* 分享地址前缀：GitHub Pages 直链，短链会被微信判为风险外链拦截 */
+  var SHARE_PREFIX = 'https://haozhe1215.github.io/leave-share/leave-share-link.html';
 
   /* 分享链接统一使用短地址，不暴露本机地址、GitHub 用户名或仓库名 */
   function defaultPrefix() {
@@ -1318,6 +1341,7 @@
   });
   $('personal').addEventListener('click', function () { toast('原型演示：个人信息页'); });
   $('reset').addEventListener('click', function () {
+    if (READONLY) return;
     state = JSON.parse(JSON.stringify(DEFAULT));
     renderAll();
     toast('已恢复示例内容');
@@ -1325,7 +1349,7 @@
 
   renderAll();
 
-  setTimeout(function () { toast('点击带虚线的信息即可修改'); }, 700);
+  if (!READONLY) setTimeout(function () { toast('点击带虚线的信息即可修改'); }, 700);
 })();
 </script>
 </body>
