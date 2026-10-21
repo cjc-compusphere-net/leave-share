@@ -1189,25 +1189,11 @@
   /* 同一标签页内粘贴了另一个分享链接时，同步刷新 */
   window.addEventListener('hashchange', restoreFromHash);
 
-  /* 分享地址前缀：部署后把这里换成自己的域名即可全局生效 */
-  var SHARE_PREFIX = 'https://your-domain.com/leave-share-link.html';
+  /* 分享地址前缀：统一使用短链接，分享出去不暴露 GitHub 用户名和仓库名 */
+  var SHARE_PREFIX = 'https://tinyurl.com/2bdac6k3';
 
-  /* 本地地址（localhost / 127.0.0.1 / 局域网 IP / file://）不参与生成，
-     统一回落到上面的 SHARE_PREFIX，避免链接里出现本机地址 */
+  /* 分享链接统一使用短地址，不暴露本机地址、GitHub 用户名或仓库名 */
   function defaultPrefix() {
-    var host = location.hostname || '';
-    var isLocal = !host ||
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host === '0.0.0.0' ||
-      host === '[::1]' ||
-      host === '::1' ||
-      /^192\.168\./.test(host) ||
-      /^10\./.test(host) ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-    if ((location.protocol === 'http:' || location.protocol === 'https:') && !isLocal) {
-      return location.origin + location.pathname;
-    }
     return SHARE_PREFIX;
   }
 
