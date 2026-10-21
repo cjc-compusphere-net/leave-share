@@ -904,7 +904,7 @@
     var add = document.createElement('div');
     add.className = 'add';
     add.textContent = '+';
-    add.title = '添加本地图片';
+    add.title = '添加图片（自动压缩进链接，对方可见）';
     add.addEventListener('click', function () { $('fileInput').click(); });
     wrap.appendChild(add);
     var addUrl = document.createElement('div');
@@ -1077,19 +1077,87 @@
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hideSheet(); closeLightbox(); } });
 
   /* ---------- 附件 ---------- */
+  /* 本地图片自动压缩后内嵌进分享链接，接收方打开即可看到（无需手动转链接） */
+  var IMG_MAX_SIDE = 400;
+  var IMG_MAX_B64 = 2400;    // 单张压缩后 base64 字符上限
+  var IMG_TOTAL_B64 = 3600;  // 所有内嵌图合计上限（base64 进链接后还会膨胀约 1/3）
+  var MAX_URL_LEN = 6000;    // 微信/QQ 超长链接会打不开
+
+  function embeddedLen(it) {
+    var s = (it && it.src) || '';
+    if (!/^data:image\/(webp|jpeg|png|gif);base64,/i.test(s)) return 0;
+    var i = s.indexOf(',');
+    return i < 0 ? 0 : s.length - i - 1;
+  }
+
+  function encodeImage(img, maxSide, q) {
+    var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    if (!w || !h) return '';
+    var k = Math.min(1, maxSide / Math.max(w, h));
+    var cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(w * k));
+    cv.height = Math.max(1, Math.round(h * k));
+    var cx = cv.getContext('2d');
+    cx.fillStyle = '#fff';
+    cx.fillRect(0, 0, cv.width, cv.height);
+    cx.drawImage(img, 0, 0, cv.width, cv.height);
+    var out = cv.toDataURL('image/webp', q);
+    if (out.indexOf('data:image/webp') !== 0) out = cv.toDataURL('image/jpeg', q);
+    return out;
+  }
+
+  function compressImage(img, cap, cb) {
+    var sides = [IMG_MAX_SIDE, 260, 200, 160, 120];
+    var qs = [0.6, 0.45, 0.35, 0.25];
+    var best = '';
+    for (var i = 0; i < sides.length; i++) {
+      for (var j = 0; j < qs.length; j++) {
+        var d = encodeImage(img, sides[i], qs[j]);
+        if (!d) continue;
+        if (!best || d.length < best.length) best = d;
+        if (d.length - d.indexOf(',') - 1 <= cap) { cb(d); return; }
+      }
+    }
+    cb(best);
+  }
+
+  function importImages(files) {
+    var list = files.filter(function (f) { return /^image\//.test(f.type || ''); });
+    if (!list.length) { toast('请选择图片文件'); return; }
+    var room_ = 6 - state.atts.length;
+    if (room_ <= 0) { toast('附件最多 6 张'); return; }
+    if (list.length > room_) list = list.slice(0, room_);
+    var used = state.atts.reduce(function (n, it) { return n + embeddedLen(it); }, 0);
+    var per = Math.floor((IMG_TOTAL_B64 - used) / list.length);
+    if (per < 500) { toast('附件图太多，分享链接会过长，请减少图片'); return; }
+    per = Math.min(per, IMG_MAX_B64);
+    list.forEach(function (f) {
+      var objUrl = URL.createObjectURL(f);
+      var img = new Image();
+      img.onload = function () {
+        compressImage(img, per, function (d) {
+          URL.revokeObjectURL(objUrl);
+          if (!d) { toast('无法处理该图片'); return; }
+          state.atts.push({ src: d, name: f.name });
+          renderAtts();
+          var url = currentLink();
+          if (url.length > MAX_URL_LEN) {
+            toast('链接偏长（' + url.length + ' 字符），微信/QQ 可能打不开，建议减少附件');
+          } else {
+            toast('已添加图片（已自动压缩进链接）');
+          }
+        });
+      };
+      img.onerror = function () { URL.revokeObjectURL(objUrl); toast('无法读取该图片'); };
+      img.src = objUrl;
+    });
+  }
+
   $('fileInput').addEventListener('change', function (e) {
     if (READONLY) { e.target.value = ''; return; }
     var files = Array.prototype.slice.call(e.target.files || []);
-    if (!files.length) return;
-    files.forEach(function (f) {
-      var r = new FileReader();
-      r.onload = function () {
-        state.atts.push({ src: r.result, name: f.name });
-        renderAtts();
-      };
-      r.readAsDataURL(f);
-    });
     e.target.value = '';
+    if (files.length) importImages(files);
   });
 
   var lbIndex = -1;
@@ -1178,8 +1246,11 @@
   /* 精简编码：字段用分隔符拼接后 base64url，比 JSON 版短一半左右 */
   function packState() {
     var at = (state.atts || []).map(function (it) {
-      if (it.src === ATT_DEFAULT) return 'd';
-      if (/^https?:\/\//i.test(it.src || '')) return 'u' + encodeURIComponent(it.src);
+      var src = it.src || '';
+      if (src === ATT_DEFAULT) return 'd';
+      if (/^https?:\/\//i.test(src)) return 'u' + encodeURIComponent(src);
+      var m = /^data:image\/(webp|jpeg|png|gif);base64,(.+)$/i.exec(src);
+      if (m) return 'i' + m[1].charAt(0) + m[2];
       return 'x';
     }).join(',');
     var raw = ['2', state.name, state.sub, toMin(state.start), toMin(state.end),
@@ -1206,6 +1277,11 @@
           if (k.charAt(0) === 'u') {
             try { return { src: decodeURIComponent(k.slice(1)), name: '附件.png' }; }
             catch (e) { return { src: PH_ATT, name: '附件.png' }; }
+          }
+          if (k.charAt(0) === 'i' && k.length > 2) {
+            var mc = k.charAt(1);
+            var mime = mc === 'w' ? 'webp' : mc === 'j' ? 'jpeg' : mc === 'p' ? 'png' : mc === 'g' ? 'gif' : '';
+            if (mime) return { src: 'data:image/' + mime + ';base64,' + k.slice(2), name: '附件' };
           }
           return { src: k === 'd' ? ATT_DEFAULT : PH_ATT, name: '附件.png' };
         });
@@ -1284,7 +1360,8 @@
     var tail = i > -1 ? url.slice(i) : '';
     $('linkBox').innerHTML = '<span class="u">' + esc(head) + '</span><span class="h">' + esc(tail) + '</span>';
     if (LINK_MODE === 'sync') {
-      $('shareTip').innerHTML = '共 <b>' + url.length + '</b> 个字符，可直接发微信 / QQ；修改内容编码在 <b>#/?d=</b> 里，用同一份页面打开即可还原。';
+      $('shareTip').innerHTML = '共 <b>' + url.length + '</b> 个字符，可直接发微信 / QQ；修改内容编码在 <b>#/?d=</b> 里，用同一份页面打开即可还原。' +
+        (url.length > MAX_URL_LEN ? '<br><b style="color:#d9534f">链接过长，微信/QQ 可能打不开，请减少附件。</b>' : '');
     } else {
       $('shareTip').innerHTML = '校方分享地址：<b>?id=…&amp;needApproval=1&amp;channel=WX&amp;userId=…&amp;appcode=CPDAILY</b> 为查询参数，末尾 <b>#/</b> 为哈希路由。';
     }
