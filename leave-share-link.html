@@ -313,7 +313,6 @@
     transition:background .18s;
   }
   .add:active{background:#f0f4f8}
-  .add.add-url{font-size:calc(var(--s) * 22);color:#7c8896}
 
   /* ---------- 只读模式（打开分享链接时） ---------- */
   body.ro .edit{
@@ -326,6 +325,7 @@
   body.ro .thumb .del,
   body.ro .add,
   body.ro .foot,
+  body.ro .fab,
   body.ro #lbDel{display:none}
 
   /* ---------- 底部 ---------- */
@@ -907,12 +907,6 @@
     add.title = '添加图片（自动压缩进链接，对方可见）';
     add.addEventListener('click', function () { $('fileInput').click(); });
     wrap.appendChild(add);
-    var addUrl = document.createElement('div');
-    addUrl.className = 'add add-url';
-    addUrl.textContent = '链接';
-    addUrl.title = '添加图片链接（转发后对方可见）';
-    addUrl.addEventListener('click', openImageUrl);
-    wrap.appendChild(addUrl);
   }
 
   function renderAll() { renderTimes(); renderText(); renderAtts(); }
@@ -978,11 +972,6 @@
         '<div class="fld"><label class="fld-lb">联系人姓名</label><input type="text" id="fName" placeholder="请输入姓名" value="' + esc(state.cName) + '"></div>' +
         '<div class="fld"><label class="fld-lb">联系电话</label><input type="tel" id="fPhone" placeholder="请输入手机号" value="' + esc(state.cPhone) + '"></div>';
     }
-    if (field === 'imgurl') {
-      return '' +
-        '<div class="fld"><label class="fld-lb">图片链接</label><input type="url" id="fImgUrl" placeholder="https://example.com/photo.jpg" autocomplete="off"></div>' +
-        '<div class="tip">需为可直接访问的 https 图片地址；转发后对方能看到这张图。</div>';
-    }
     return '';
   }
 
@@ -996,18 +985,8 @@
     end: '修改结束时间',
     reason: '修改请假原因',
     dest: '修改目的地',
-    contact: '修改紧急联系人',
-    imgurl: '添加图片链接'
+    contact: '修改紧急联系人'
   };
-
-  function openImageUrl() {
-    if (READONLY) return;
-    currentField = 'imgurl';
-    $('sheetTitle').textContent = TITLES.imgurl;
-    $('sheetBody').innerHTML = sheetHTML('imgurl');
-    showSheet();
-    setTimeout(function () { var i = $('fImgUrl'); if (i) i.focus(); }, 320);
-  }
 
   document.querySelectorAll('[data-edit]').forEach(function (el) {
     el.addEventListener('click', function () {
@@ -1057,14 +1036,6 @@
       if (phone && !/^[\d\s\-+]{6,20}$/.test(phone)) { toast('请输入正确的联系电话'); return; }
       state.cName = name;
       state.cPhone = phone;
-    } else if (currentField === 'imgurl') {
-      var u = $('fImgUrl').value.trim();
-      if (!/^https:\/\/[^\s"'<>]+$/i.test(u)) { toast('请输入以 https:// 开头的图片地址'); return; }
-      state.atts.push({ src: u, name: '附件.png' });
-      renderAll();
-      hideSheet();
-      toast('已添加图片链接');
-      return;
     }
     renderAll();
     hideSheet();
@@ -1078,9 +1049,9 @@
 
   /* ---------- 附件 ---------- */
   /* 本地图片自动压缩后内嵌进分享链接，接收方打开即可看到（无需手动转链接） */
-  var IMG_MAX_SIDE = 400;
-  var IMG_MAX_B64 = 2400;    // 单张压缩后 base64 字符上限
-  var IMG_TOTAL_B64 = 3600;  // 所有内嵌图合计上限（base64 进链接后还会膨胀约 1/3）
+  var IMG_MAX_SIDE = 240;
+  var IMG_MAX_B64 = 1600;    // 单张压缩后 base64 字符上限
+  var IMG_TOTAL_B64 = 2400;  // 所有内嵌图合计上限（base64 进链接后还会膨胀约 1/3）
   var MAX_URL_LEN = 6000;    // 微信/QQ 超长链接会打不开
 
   function embeddedLen(it) {
@@ -1107,8 +1078,8 @@
   }
 
   function compressImage(img, cap, cb) {
-    var sides = [IMG_MAX_SIDE, 260, 200, 160, 120];
-    var qs = [0.6, 0.45, 0.35, 0.25];
+    var sides = [IMG_MAX_SIDE, 200, 160, 120, 96, 80];
+    var qs = [0.55, 0.4, 0.3, 0.22];
     var best = '';
     for (var i = 0; i < sides.length; i++) {
       for (var j = 0; j < qs.length; j++) {
@@ -1224,6 +1195,14 @@
     while (s.length % 4) s += '=';
     return decodeURIComponent(escape(atob(s)));
   }
+  function toUrlSafeB64(s) {
+    return s.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function fromUrlSafeB64(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    return s;
+  }
 
   var SEP = '\u001f';
   var PH_ATT = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
@@ -1243,19 +1222,19 @@
       'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
-  /* 精简编码：字段用分隔符拼接后 base64url，比 JSON 版短一半左右 */
+  /* 精简编码：文本字段 base64url，图片附件单独拼接，避免二次编码膨胀 */
   function packState() {
     var at = (state.atts || []).map(function (it) {
       var src = it.src || '';
       if (src === ATT_DEFAULT) return 'd';
       if (/^https?:\/\//i.test(src)) return 'u' + encodeURIComponent(src);
       var m = /^data:image\/(webp|jpeg|png|gif);base64,(.+)$/i.exec(src);
-      if (m) return 'i' + m[1].charAt(0) + m[2];
+      if (m) return 'i' + m[1].charAt(0) + toUrlSafeB64(m[2]);
       return 'x';
     }).join(',');
-    var raw = ['2', state.name, state.sub, toMin(state.start), toMin(state.end),
-      state.reason, state.dest, state.cName, state.cPhone, at].join(SEP);
-    return b64url(raw);
+    var head = ['2', state.name, state.sub, toMin(state.start), toMin(state.end),
+      state.reason, state.dest, state.cName, state.cPhone].join(SEP);
+    return '3' + b64url(head) + '~' + at;
   }
 
   function applyPack(p) {
@@ -1281,7 +1260,7 @@
           if (k.charAt(0) === 'i' && k.length > 2) {
             var mc = k.charAt(1);
             var mime = mc === 'w' ? 'webp' : mc === 'j' ? 'jpeg' : mc === 'p' ? 'png' : mc === 'g' ? 'gif' : '';
-            if (mime) return { src: 'data:image/' + mime + ';base64,' + k.slice(2), name: '附件' };
+            if (mime) return { src: 'data:image/' + mime + ';base64,' + fromUrlSafeB64(k.slice(2)), name: '附件' };
           }
           return { src: k === 'd' ? ATT_DEFAULT : PH_ATT, name: '附件.png' };
         });
@@ -1311,6 +1290,13 @@
   }
 
   function decodePayload(token) {
+    if (token.charAt(0) === '3') {
+      var k = token.indexOf('~');
+      if (k < 0) return null;
+      var head = unb64url(token.slice(1, k));
+      if (head.charAt(0) !== '2') return null;
+      return head + SEP + token.slice(k + 1);
+    }
     var txt = unb64url(token);
     if (txt.charAt(0) === '2') return txt;
     try { return JSON.parse(txt); } catch (e) { return null; }
