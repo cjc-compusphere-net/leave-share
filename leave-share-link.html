@@ -313,6 +313,7 @@
     transition:background .18s;
   }
   .add:active{background:#f0f4f8}
+  .add.add-url{font-size:calc(var(--s) * 22);color:#7c8896}
 
   /* ---------- 只读模式（打开分享链接时） ---------- */
   body.ro .edit{
@@ -880,22 +881,38 @@
     state.atts.forEach(function (a, i) {
       var d = document.createElement('div');
       d.className = 'thumb';
-      d.innerHTML = '<img src="' + a.src + '" alt="附件"><div class="del" data-i="' + i + '">&times;</div>';
-      d.querySelector('img').addEventListener('click', function () { openLightbox(i); });
-      d.querySelector('.del').addEventListener('click', function (ev) {
+      var im = document.createElement('img');
+      im.alt = '附件';
+      im.src = a.src;
+      im.addEventListener('error', function () {
+        if (im.src !== PH_ATT) im.src = PH_ATT;
+      });
+      im.addEventListener('click', function () { openLightbox(i); });
+      var del = document.createElement('div');
+      del.className = 'del';
+      del.innerHTML = '&times;';
+      del.addEventListener('click', function (ev) {
         ev.stopPropagation();
         state.atts.splice(i, 1);
         renderAtts();
         toast('已删除附件');
       });
+      d.appendChild(im);
+      d.appendChild(del);
       wrap.appendChild(d);
     });
     var add = document.createElement('div');
     add.className = 'add';
     add.textContent = '+';
-    add.title = '添加附件';
+    add.title = '添加本地图片';
     add.addEventListener('click', function () { $('fileInput').click(); });
     wrap.appendChild(add);
+    var addUrl = document.createElement('div');
+    addUrl.className = 'add add-url';
+    addUrl.textContent = '链接';
+    addUrl.title = '添加图片链接（转发后对方可见）';
+    addUrl.addEventListener('click', openImageUrl);
+    wrap.appendChild(addUrl);
   }
 
   function renderAll() { renderTimes(); renderText(); renderAtts(); }
@@ -961,6 +978,11 @@
         '<div class="fld"><label class="fld-lb">联系人姓名</label><input type="text" id="fName" placeholder="请输入姓名" value="' + esc(state.cName) + '"></div>' +
         '<div class="fld"><label class="fld-lb">联系电话</label><input type="tel" id="fPhone" placeholder="请输入手机号" value="' + esc(state.cPhone) + '"></div>';
     }
+    if (field === 'imgurl') {
+      return '' +
+        '<div class="fld"><label class="fld-lb">图片链接</label><input type="url" id="fImgUrl" placeholder="https://example.com/photo.jpg" autocomplete="off"></div>' +
+        '<div class="tip">需为可直接访问的 https 图片地址；转发后对方能看到这张图。</div>';
+    }
     return '';
   }
 
@@ -974,8 +996,18 @@
     end: '修改结束时间',
     reason: '修改请假原因',
     dest: '修改目的地',
-    contact: '修改紧急联系人'
+    contact: '修改紧急联系人',
+    imgurl: '添加图片链接'
   };
+
+  function openImageUrl() {
+    if (READONLY) return;
+    currentField = 'imgurl';
+    $('sheetTitle').textContent = TITLES.imgurl;
+    $('sheetBody').innerHTML = sheetHTML('imgurl');
+    showSheet();
+    setTimeout(function () { var i = $('fImgUrl'); if (i) i.focus(); }, 320);
+  }
 
   document.querySelectorAll('[data-edit]').forEach(function (el) {
     el.addEventListener('click', function () {
@@ -1025,6 +1057,14 @@
       if (phone && !/^[\d\s\-+]{6,20}$/.test(phone)) { toast('请输入正确的联系电话'); return; }
       state.cName = name;
       state.cPhone = phone;
+    } else if (currentField === 'imgurl') {
+      var u = $('fImgUrl').value.trim();
+      if (!/^https:\/\/[^\s"'<>]+$/i.test(u)) { toast('请输入以 https:// 开头的图片地址'); return; }
+      state.atts.push({ src: u, name: '附件.png' });
+      renderAll();
+      hideSheet();
+      toast('已添加图片链接');
+      return;
     }
     renderAll();
     hideSheet();
@@ -1138,7 +1178,9 @@
   /* 精简编码：字段用分隔符拼接后 base64url，比 JSON 版短一半左右 */
   function packState() {
     var at = (state.atts || []).map(function (it) {
-      return it.src === ATT_DEFAULT ? 'd' : 'x';
+      if (it.src === ATT_DEFAULT) return 'd';
+      if (/^https?:\/\//i.test(it.src || '')) return 'u' + encodeURIComponent(it.src);
+      return 'x';
     }).join(',');
     var raw = ['2', state.name, state.sub, toMin(state.start), toMin(state.end),
       state.reason, state.dest, state.cName, state.cPhone, at].join(SEP);
@@ -1161,6 +1203,10 @@
       var ats = (f[9] || '').split(',').filter(Boolean);
       if (ats.length) {
         state.atts = ats.map(function (k) {
+          if (k.charAt(0) === 'u') {
+            try { return { src: decodeURIComponent(k.slice(1)), name: '附件.png' }; }
+            catch (e) { return { src: PH_ATT, name: '附件.png' }; }
+          }
           return { src: k === 'd' ? ATT_DEFAULT : PH_ATT, name: '附件.png' };
         });
       }
