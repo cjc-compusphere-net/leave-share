@@ -44,7 +44,7 @@
     position:relative;
     flex:none;
     height:calc(var(--s) * 188);
-    background:linear-gradient(0deg,#4ed492,#19be6b);
+    background:linear-gradient(180deg,#06b65d 0%,#1fd57a 48%,#5cefa0 100%);
     color:#fff;
     overflow:hidden;
     display:flex;
@@ -557,6 +557,98 @@
   }
   .share-ft{display:flex;gap:calc(var(--s) * 20)}
 
+  /* ---------- 同步二维码 ---------- */
+  .qr-block{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+    margin:calc(var(--s) * 2) 0 calc(var(--s) * 24);
+  }
+  .qr-card{
+    position:relative;
+    width:clamp(170px, 56vw, 240px);
+    aspect-ratio:1 / 1;
+    flex:none;
+    padding:calc(var(--s) * 13);
+    background:#fff;
+    border:1px solid #e1eee7;
+    border-radius:calc(var(--s) * 20);
+    box-shadow:0 calc(var(--s) * 9) calc(var(--s) * 26) rgba(18,89,52,.11);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+  .qr-card::before{
+    content:"";
+    position:absolute;
+    left:0;
+    right:0;
+    top:0;
+    height:calc(var(--s) * 5);
+    background:linear-gradient(90deg,#5cefa0,#19be6b);
+  }
+  .qr-card canvas{
+    display:block;
+    width:100%;
+    height:auto;
+    border-radius:calc(var(--s) * 5);
+    background:#fff;
+  }
+  .qr-side{max-width:calc(var(--s) * 500);margin-top:calc(var(--s) * 16)}
+  .qr-kicker{
+    color:#13a95f;
+    font-size:calc(var(--s) * 22);
+    line-height:1.4;
+    letter-spacing:calc(var(--s) * 2);
+  }
+  .qr-title{
+    color:var(--dark);
+    font-size:calc(var(--s) * 32);
+    font-weight:600;
+    line-height:1.35;
+    margin-top:calc(var(--s) * 4);
+  }
+  .qr-desc{
+    color:#8b95a3;
+    font-size:calc(var(--s) * 22);
+    line-height:1.55;
+    margin-top:calc(var(--s) * 6);
+  }
+  .qr-save{
+    height:calc(var(--s) * 58);
+    margin-top:calc(var(--s) * 14);
+    padding:0 calc(var(--s) * 24);
+    border:1px solid rgba(25,190,107,.30);
+    border-radius:calc(var(--s) * 29);
+    background:rgba(25,190,107,.07);
+    color:#0b9d58;
+    font-family:inherit;
+    font-size:calc(var(--s) * 22);
+    cursor:pointer;
+    transition:background .18s,opacity .18s;
+  }
+  .qr-save:active{background:rgba(25,190,107,.15)}
+  .qr-save:disabled{opacity:.45;cursor:not-allowed}
+  .qr-fallback{
+    position:absolute;
+    inset:calc(var(--s) * 13);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:calc(var(--s) * 18);
+    border-radius:calc(var(--s) * 10);
+    background:#f7f9fb;
+    color:#8b95a3;
+    font-size:calc(var(--s) * 21);
+    line-height:1.55;
+  }
+  .qr-block.bad .qr-fallback{display:flex}
+  .qr-block.bad canvas{visibility:hidden}
+  .btn:disabled{opacity:.48;cursor:not-allowed}
+  body.share-open .boyaSevice{display:none}
+
   /* ---------- toast / 提示 ---------- */
   .toast{
     position:fixed;
@@ -764,12 +856,24 @@
 <div class="share-mask" id="shareMask"></div>
 <div class="share-panel" id="sharePanel">
   <div class="sheet-hd">
-    <span>转发链接</span>
+    <span>转发请假单</span>
     <span class="sheet-x" id="shareClose">&times;</span>
   </div>
   <div class="seg" id="seg">
     <button class="on" data-mode="sync">同步链接</button>
     <button data-mode="official">校方链接</button>
+  </div>
+  <div class="qr-block" id="qrBlock">
+    <div class="qr-card">
+      <canvas id="qrCanvas" width="900" height="900" role="img" aria-label="请假单同步链接二维码"></canvas>
+      <div class="qr-fallback" id="qrFallback">内容过长<br>暂时无法生成二维码</div>
+    </div>
+    <div class="qr-side">
+      <div class="qr-kicker">同步二维码</div>
+      <div class="qr-title">扫码查看请假单</div>
+      <div class="qr-desc">微信 / QQ 扫一扫，完整内容与当前修改同步</div>
+      <button class="qr-save" id="btnSaveQr" type="button">保存二维码</button>
+    </div>
   </div>
   <div id="syncParams">
     <div class="fld"><label class="fld-lb">链接前缀（改成你部署后的地址）</label><input type="text" id="pPrefix" spellcheck="false"></div>
@@ -787,10 +891,519 @@
     </div>
   </div>
   <div class="share-ft">
-    <button class="btn ghost" id="btnSysShare">系统分享</button>
-    <button class="btn primary" id="btnCopyLink">复制链接</button>
+    <button class="btn ghost" id="btnCopyLink">复制链接</button>
+    <button class="btn primary" id="btnSysShare">转发二维码</button>
   </div>
 </div>
+
+<script>
+/*! Minimal QR encoder (byte mode, versions 1-40, ECC M/L) for the leave share page.
+ *  QR Code is a registered trademark of DENSO WAVE INCORPORATED.
+ *  Reed-Solomon block tables adapted from qrcode-generator by Kazuhiko Arase (MIT).
+ *  Implements ISO/IEC 18004 without external dependencies. */
+(function (root) {
+  'use strict';
+
+  var RS_L = [
+  [1,26,19],
+  [1,44,34],
+  [1,70,55],
+  [1,100,80],
+  [1,134,108],
+  [2,86,68],
+  [2,98,78],
+  [2,121,97],
+  [2,146,116],
+  [2,86,68,2,87,69],
+  [4,101,81],
+  [2,116,92,2,117,93],
+  [4,133,107],
+  [3,145,115,1,146,116],
+  [5,109,87,1,110,88],
+  [5,122,98,1,123,99],
+  [1,135,107,5,136,108],
+  [5,150,120,1,151,121],
+  [3,141,113,4,142,114],
+  [3,135,107,5,136,108],
+  [4,144,116,4,145,117],
+  [2,139,111,7,140,112],
+  [4,151,121,5,152,122],
+  [6,147,117,4,148,118],
+  [8,132,106,4,133,107],
+  [10,142,114,2,143,115],
+  [8,152,122,4,153,123],
+  [3,147,117,10,148,118],
+  [7,146,116,7,147,117],
+  [5,145,115,10,146,116],
+  [13,145,115,3,146,116],
+  [17,145,115],
+  [17,145,115,1,146,116],
+  [13,145,115,6,146,116],
+  [12,151,121,7,152,122],
+  [6,151,121,14,152,122],
+  [17,152,122,4,153,123],
+  [4,152,122,18,153,123],
+  [20,147,117,4,148,118],
+  [19,148,118,6,149,119]
+];;
+  var RS_M = [
+  [1,26,16],
+  [1,44,28],
+  [1,70,44],
+  [2,50,32],
+  [2,67,43],
+  [4,43,27],
+  [4,49,31],
+  [2,60,38,2,61,39],
+  [3,58,36,2,59,37],
+  [4,69,43,1,70,44],
+  [1,80,50,4,81,51],
+  [6,58,36,2,59,37],
+  [8,59,37,1,60,38],
+  [4,64,40,5,65,41],
+  [5,65,41,5,66,42],
+  [7,73,45,3,74,46],
+  [10,74,46,1,75,47],
+  [9,69,43,4,70,44],
+  [3,70,44,11,71,45],
+  [3,67,41,13,68,42],
+  [17,68,42],
+  [17,74,46],
+  [4,75,47,14,76,48],
+  [6,73,45,14,74,46],
+  [8,75,47,13,76,48],
+  [19,74,46,4,75,47],
+  [22,73,45,3,74,46],
+  [3,73,45,23,74,46],
+  [21,73,45,7,74,46],
+  [19,75,47,10,76,48],
+  [2,74,46,29,75,47],
+  [10,74,46,23,75,47],
+  [14,74,46,21,75,47],
+  [14,74,46,23,75,47],
+  [12,75,47,26,76,48],
+  [6,75,47,34,76,48],
+  [29,74,46,14,75,47],
+  [13,74,46,32,75,47],
+  [40,75,47,7,76,48],
+  [18,75,47,31,76,48]
+];;
+
+  var ALIGN = [
+  [],
+  [6,18],
+  [6,22],
+  [6,26],
+  [6,30],
+  [6,34],
+  [6,22,38],
+  [6,24,42],
+  [6,26,46],
+  [6,28,50],
+  [6,30,54],
+  [6,32,58],
+  [6,34,62],
+  [6,26,46,66],
+  [6,26,48,70],
+  [6,26,50,74],
+  [6,30,54,78],
+  [6,30,56,82],
+  [6,30,58,86],
+  [6,34,62,90],
+  [6,28,50,72,94],
+  [6,26,50,74,98],
+  [6,30,54,78,102],
+  [6,28,54,80,106],
+  [6,32,58,84,110],
+  [6,30,58,86,114],
+  [6,34,62,90,118],
+  [6,26,50,74,98,122],
+  [6,30,54,78,102,126],
+  [6,26,52,78,104,130],
+  [6,30,56,82,108,134],
+  [6,34,60,86,112,138],
+  [6,30,58,86,114,142],
+  [6,34,62,90,118,146],
+  [6,30,54,78,102,126,150],
+  [6,24,50,76,102,128,154],
+  [6,28,54,80,106,132,158],
+  [6,32,58,84,110,136,162],
+  [6,26,54,82,110,138,166],
+  [6,30,58,86,114,142,170]
+];;
+
+  var EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+  (function () {
+    var x = 1;
+    for (var i = 0; i < 255; i++) {
+      EXP[i] = x;
+      LOG[x] = i;
+      x <<= 1;
+      if (x & 0x100) x ^= 0x11d;
+    }
+    for (var j = 255; j < 512; j++) EXP[j] = EXP[j - 255];
+  })();
+
+  function mul(a, b) {
+    return (a && b) ? EXP[LOG[a] + LOG[b]] : 0;
+  }
+
+  function genPoly(degree) {
+    var g = [1];
+    for (var i = 0; i < degree; i++) {
+      var next = new Array(g.length + 1);
+      for (var j = 0; j < next.length; j++) next[j] = 0;
+      for (var k = 0; k < g.length; k++) {
+        next[k] ^= g[k];
+        next[k + 1] ^= mul(g[k], EXP[i]);
+      }
+      g = next;
+    }
+    return g;
+  }
+
+  function eccFor(data, ecLen) {
+    var g = genPoly(ecLen);
+    var r = data.concat(new Array(ecLen));
+    for (var i = 0; i < data.length; i++) {
+      var factor = r[i];
+      if (!factor) continue;
+      for (var j = 0; j < g.length; j++) {
+        r[i + j] ^= mul(g[j], factor);
+      }
+    }
+    return r.slice(data.length);
+  }
+
+  function utf8Bytes(s) {
+    if (typeof TextEncoder !== 'undefined') return Array.prototype.slice.call(new TextEncoder().encode(s));
+    var out = [];
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+      else if (c < 0xd800 || c >= 0xe000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      else {
+        c = 0x10000 + (((c & 0x3ff) << 10) | (s.charCodeAt(++i) & 0x3ff));
+        out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      }
+    }
+    return out;
+  }
+
+  function expandBlocks(version, ecc) {
+    var raw = (ecc === 'L' ? RS_L : RS_M)[version - 1];
+    var blocks = [];
+    for (var i = 0; i < raw.length; i += 3) {
+      for (var j = 0; j < raw[i]; j++) {
+        blocks.push({ total: raw[i + 1], data: raw[i + 2] });
+      }
+    }
+    return blocks;
+  }
+
+  function dataCapacity(version, ecc) {
+    var blocks = expandBlocks(version, ecc), n = 0;
+    for (var i = 0; i < blocks.length; i++) n += blocks[i].data;
+    return n;
+  }
+
+  function chooseVersion(byteLen, ecc) {
+    for (var v = 1; v <= 40; v++) {
+      var cc = v < 10 ? 8 : 16;
+      if (4 + cc + byteLen * 8 <= dataCapacity(v, ecc) * 8) return v;
+    }
+    return 0;
+  }
+
+  function bitLength(v) {
+    var n = 0;
+    while (v) { n++; v >>>= 1; }
+    return n;
+  }
+
+  function bchFormat(data) {
+    var d = data << 10;
+    while (bitLength(d) > 10) d ^= 0x537 << (bitLength(d) - 11);
+    return ((data << 10) | d) ^ 0x5412;
+  }
+
+  function bchVersion(version) {
+    var d = version << 12;
+    while (bitLength(d) > 12) d ^= 0x1f25 << (bitLength(d) - 13);
+    return (version << 12) | d;
+  }
+
+  function maskBit(mask, r, c) {
+    switch (mask) {
+      case 0: return (r + c) % 2 === 0;
+      case 1: return r % 2 === 0;
+      case 2: return c % 3 === 0;
+      case 3: return (r + c) % 3 === 0;
+      case 4: return (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0;
+      case 5: return ((r * c) % 2) + ((r * c) % 3) === 0;
+      case 6: return ((((r * c) % 2) + ((r * c) % 3)) % 2) === 0;
+      default: return ((((r + c) % 2) + ((r * c) % 3)) % 2) === 0;
+    }
+  }
+
+  function penalty(m) {
+    var n = m.length, score = 0, r, c, i;
+
+    for (r = 0; r < n; r++) {
+      var run = 1;
+      for (c = 1; c < n; c++) {
+        if (m[r][c] === m[r][c - 1]) run++;
+        else {
+          if (run >= 5) score += 3 + run - 5;
+          run = 1;
+        }
+      }
+      if (run >= 5) score += 3 + run - 5;
+    }
+    for (c = 0; c < n; c++) {
+      var run2 = 1;
+      for (r = 1; r < n; r++) {
+        if (m[r][c] === m[r - 1][c]) run2++;
+        else {
+          if (run2 >= 5) score += 3 + run2 - 5;
+          run2 = 1;
+        }
+      }
+      if (run2 >= 5) score += 3 + run2 - 5;
+    }
+
+    for (r = 0; r < n - 1; r++) {
+      for (c = 0; c < n - 1; c++) {
+        var v = m[r][c];
+        if (m[r][c + 1] === v && m[r + 1][c] === v && m[r + 1][c + 1] === v) score += 3;
+      }
+    }
+
+    var p1 = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0];
+    var p2 = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1];
+    function match(get, start, p) {
+      for (var k = 0; k < 11; k++) if (get(start + k) !== !!p[k]) return false;
+      return true;
+    }
+    for (r = 0; r < n; r++) {
+      for (c = 0; c <= n - 11; c++) {
+        if (match(function (x) { return m[r][x]; }, c, p1)) score += 40;
+        if (match(function (x) { return m[r][x]; }, c, p2)) score += 40;
+      }
+    }
+    for (c = 0; c < n; c++) {
+      for (r = 0; r <= n - 11; r++) {
+        if (match(function (x) { return m[x][c]; }, r, p1)) score += 40;
+        if (match(function (x) { return m[x][c]; }, r, p2)) score += 40;
+      }
+    }
+
+    var dark = 0;
+    for (r = 0; r < n; r++) for (c = 0; c < n; c++) if (m[r][c]) dark++;
+    score += Math.floor(Math.abs(dark * 100 / (n * n) - 50) / 5) * 10;
+    return score;
+  }
+
+  function make(text) {
+    var bytes = utf8Bytes(String(text));
+    var ecc = 'M';
+    var version = chooseVersion(bytes.length, ecc);
+    if (!version) {
+      ecc = 'L';
+      version = chooseVersion(bytes.length, ecc);
+    }
+    if (!version) return null;
+
+    var blocks = expandBlocks(version, ecc);
+    var totalData = 0, maxData = 0, maxEc = 0;
+    for (var b = 0; b < blocks.length; b++) {
+      totalData += blocks[b].data;
+      maxData = Math.max(maxData, blocks[b].data);
+      maxEc = Math.max(maxEc, blocks[b].total - blocks[b].data);
+    }
+
+    var bits = [];
+    function push(value, len) {
+      for (var i = len - 1; i >= 0; i--) bits.push((value >>> i) & 1);
+    }
+    push(4, 4);
+    push(bytes.length, version < 10 ? 8 : 16);
+    for (var i = 0; i < bytes.length; i++) push(bytes[i], 8);
+    var capBits = totalData * 8;
+    for (var t = 0; t < 4 && bits.length < capBits; t++) bits.push(0);
+    while (bits.length % 8) bits.push(0);
+
+    var dataCw = [];
+    for (var p = 0; p < bits.length; p += 8) {
+      var v = 0;
+      for (var q = 0; q < 8; q++) v = (v << 1) | bits[p + q];
+      dataCw.push(v);
+    }
+    var padByte = 0xec;
+    while (dataCw.length < totalData) {
+      dataCw.push(padByte);
+      padByte = padByte === 0xec ? 0x11 : 0xec;
+    }
+
+    var dataBlocks = [], ecBlocks = [], offset = 0;
+    for (var bi = 0; bi < blocks.length; bi++) {
+      var d = dataCw.slice(offset, offset + blocks[bi].data);
+      offset += blocks[bi].data;
+      dataBlocks.push(d);
+      ecBlocks.push(eccFor(d, blocks[bi].total - blocks[bi].data));
+    }
+
+    var all = [];
+    for (var k = 0; k < maxData; k++) {
+      for (var bj = 0; bj < blocks.length; bj++) {
+        if (k < dataBlocks[bj].length) all.push(dataBlocks[bj][k]);
+      }
+    }
+    for (var m = 0; m < maxEc; m++) {
+      for (var bk = 0; bk < blocks.length; bk++) {
+        if (m < ecBlocks[bk].length) all.push(ecBlocks[bk][m]);
+      }
+    }
+
+    var n = version * 4 + 17;
+    var modules = [], fixed = [];
+    for (var rr = 0; rr < n; rr++) {
+      modules[rr] = new Array(n);
+      fixed[rr] = new Array(n);
+      for (var cc = 0; cc < n; cc++) {
+        modules[rr][cc] = false;
+        fixed[rr][cc] = false;
+      }
+    }
+
+    function set(r, c, value) {
+      if (r < 0 || c < 0 || r >= n || c >= n) return;
+      modules[r][c] = !!value;
+      fixed[r][c] = true;
+    }
+
+    function finder(row, col) {
+      for (var r = -1; r <= 7; r++) {
+        for (var c = -1; c <= 7; c++) {
+          var on = (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+            (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+            (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+          set(row + r, col + c, on);
+        }
+      }
+    }
+    finder(0, 0);
+    finder(n - 7, 0);
+    finder(0, n - 7);
+
+    var align = ALIGN[version - 1];
+    for (var ai = 0; ai < align.length; ai++) {
+      for (var aj = 0; aj < align.length; aj++) {
+        var ar = align[ai], ac = align[aj];
+        if (modules[ar][ac]) continue;
+        for (var r2 = -2; r2 <= 2; r2++) {
+          for (var c2 = -2; c2 <= 2; c2++) {
+            set(ar + r2, ac + c2, Math.max(Math.abs(r2), Math.abs(c2)) !== 1);
+          }
+        }
+      }
+    }
+
+    for (var ti = 8; ti < n - 8; ti++) {
+      if (!fixed[6][ti]) set(6, ti, ti % 2 === 0);
+      if (!fixed[ti][6]) set(ti, 6, ti % 2 === 0);
+    }
+
+    var eccBits = ecc === 'M' ? 0 : 1;
+    function putFormat(mat, mask, reserve) {
+      var value = bchFormat((eccBits << 3) | mask);
+      function put(r, c, on) {
+        mat[r][c] = on;
+        if (reserve) fixed[r][c] = true;
+      }
+      for (var i = 0; i < 15; i++) {
+        var on = !!((value >> i) & 1);
+        if (i < 6) put(i, 8, on);
+        else if (i < 8) put(i + 1, 8, on);
+        else put(n - 15 + i, 8, on);
+
+        if (i < 8) put(8, n - i - 1, on);
+        else if (i < 9) put(8, 15 - i, on);
+        else put(8, 15 - i - 1, on);
+      }
+      mat[n - 8][8] = true;
+      if (reserve) fixed[n - 8][8] = true;
+    }
+
+    putFormat(modules, 0, true);
+
+    if (version >= 7) {
+      var vb = bchVersion(version);
+      for (var vi = 0; vi < 18; vi++) {
+        var von = !!((vb >> vi) & 1);
+        set(Math.floor(vi / 3), vi % 3 + n - 11, von);
+        set(vi % 3 + n - 11, Math.floor(vi / 3), von);
+      }
+    }
+
+    var dataPositions = [];
+    var bitIndex = 0;
+    var row = n - 1, inc = -1;
+    for (var col = n - 1; col > 0; col -= 2) {
+      if (col === 6) col -= 1;
+      while (true) {
+        for (var dc = 0; dc < 2; dc++) {
+          var cr = row, cc2 = col - dc;
+          if (!fixed[cr][cc2]) {
+            var dark = bitIndex < all.length * 8 ? !!((all[bitIndex >> 3] >> (7 - (bitIndex & 7))) & 1) : false;
+            modules[cr][cc2] = dark;
+            dataPositions.push([cr, cc2]);
+            bitIndex++;
+          }
+        }
+        row += inc;
+        if (row < 0 || row >= n) {
+          row -= inc;
+          inc = -inc;
+          break;
+        }
+      }
+    }
+
+    var bestMask = 0, bestScore = Infinity;
+    {
+      for (var mask = 0; mask < 8; mask++) {
+        var candidate = [];
+        for (var y = 0; y < n; y++) candidate[y] = modules[y].slice();
+        for (var dp = 0; dp < dataPositions.length; dp++) {
+          var pos = dataPositions[dp];
+          if (maskBit(mask, pos[0], pos[1])) candidate[pos[0]][pos[1]] = !candidate[pos[0]][pos[1]];
+        }
+        putFormat(candidate, mask);
+        var sc = penalty(candidate);
+        if (sc < bestScore) {
+          bestScore = sc;
+          bestMask = mask;
+        }
+      }
+    }
+
+    if (bestMask) {
+      for (var dm = 0; dm < dataPositions.length; dm++) {
+        var pp = dataPositions[dm];
+        if (maskBit(bestMask, pp[0], pp[1])) modules[pp[0]][pp[1]] = !modules[pp[0]][pp[1]];
+      }
+    }
+    putFormat(modules, bestMask);
+
+    return { size: n, modules: modules, version: version, ecc: ecc, mask: bestMask };
+  }
+
+  root.makeLeaveQR = make;
+  if (typeof module !== 'undefined' && module.exports) module.exports = make;
+})(typeof self !== 'undefined' ? self : this);
+</script>
 
 <script>
 (function () {
@@ -1321,7 +1934,7 @@
   window.addEventListener('hashchange', restoreFromHash);
 
   /* 分享地址前缀：GitHub Pages 直链，短链会被微信判为风险外链拦截 */
-  var SHARE_PREFIX = 'https://haozhe1215.github.io/leave-share/leave-share-link.html';
+  var SHARE_PREFIX = 'https://cjc.compusphere.net/leave-share/leave-share-link.html';
 
   /* 分享链接统一使用短地址，不暴露本机地址、GitHub 用户名或仓库名 */
   function defaultPrefix() {
@@ -1339,21 +1952,205 @@
     return LINK_MODE === 'sync' ? syncLink() : buildLink();
   }
 
+  /* ---------- 同步二维码 ---------- */
+  var qrState = { key: '', available: false, blob: null };
+  var qrTimer = null;
+  var shareOpen = false;
+
+  function qrKey(url) { return LINK_MODE + '\n' + url; }
+  function currentQrOK(url) { return qrState.available && qrState.key === qrKey(url); }
+
+  function syncQrActions(url) {
+    if (!url) url = currentLink();
+    var ok = LINK_MODE === 'sync' && currentQrOK(url);
+    $('btnSysShare').textContent = LINK_MODE === 'sync' ? '转发二维码' : '系统分享';
+    $('btnSysShare').disabled = LINK_MODE === 'sync' && !ok;
+    $('btnSaveQr').disabled = !ok;
+  }
+
+  function updateShareTip(url) {
+    if (LINK_MODE !== 'sync') {
+      $('shareTip').innerHTML = '校方分享地址：<b>?id=…&amp;needApproval=1&amp;channel=WX&amp;userId=…&amp;appcode=CPDAILY</b> 为查询参数，末尾 <b>#/</b> 为哈希路由。';
+      return;
+    }
+    var msg = '共 <b>' + url.length + '</b> 个字符。';
+    if (qrState.key === qrKey(url)) {
+      msg += qrState.available
+        ? '二维码已包含当前全部内容，微信 / QQ 扫码即可打开。'
+        : '<br><b style="color:#d9534f">内容过长，暂时无法生成二维码，请减少附件或直接复制链接。</b>';
+    } else {
+      msg += '修改内容会同步更新二维码。';
+    }
+    if (url.length > MAX_URL_LEN) {
+      msg += '<br><b style="color:#d9534f">链接过长，微信/QQ 可能打不开，请减少附件。</b>';
+    }
+    $('shareTip').innerHTML = msg;
+  }
+
+  function drawQR(result, url) {
+    var canvas = $('qrCanvas');
+    var context = canvas.getContext('2d');
+    if (!context) return false;
+    var quiet = 4;
+    var total = result.size + quiet * 2;
+    var scale = Math.max(3, Math.floor(960 / total));
+    var pixels = total * scale;
+    canvas.width = pixels;
+    canvas.height = pixels;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, pixels, pixels);
+    context.fillStyle = '#14251c';
+    for (var r = 0; r < result.size; r++) {
+      for (var c = 0; c < result.size; c++) {
+        if (result.modules[r][c]) {
+          context.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+        }
+      }
+    }
+    canvas.setAttribute('aria-label', '请假单同步链接二维码，' + url.length + ' 个字符');
+    $('qrBlock').classList.remove('bad');
+    qrState.key = qrKey(url);
+    qrState.available = true;
+    qrState.blob = null;
+    var key = qrState.key;
+    if (canvas.toBlob) {
+      canvas.toBlob(function (blob) {
+        if (blob && qrState.key === key) qrState.blob = blob;
+      }, 'image/png');
+    }
+    return true;
+  }
+
+  function failQR(url) {
+    qrState.key = qrKey(url);
+    qrState.available = false;
+    qrState.blob = null;
+    $('qrBlock').classList.add('bad');
+    $('qrFallback').innerHTML = '内容过长<br>暂时无法生成二维码';
+    syncQrActions(url);
+    updateShareTip(url);
+  }
+
+  function updateQR(url) {
+    if (LINK_MODE !== 'sync') { syncQrActions(url); return; }
+    if (qrState.key === qrKey(url)) { syncQrActions(url); updateShareTip(url); return; }
+    var result = null;
+    try {
+      result = window.makeLeaveQR ? window.makeLeaveQR(url) : null;
+    } catch (e) {
+      result = null;
+    }
+    if (!result || !drawQR(result, url)) { failQR(url); return; }
+    syncQrActions(url);
+    updateShareTip(url);
+  }
+
+  function queueQR(url) {
+    clearTimeout(qrTimer);
+    if (LINK_MODE !== 'sync') {
+      $('qrBlock').style.display = 'none';
+      syncQrActions(url);
+      updateShareTip(url);
+      return;
+    }
+    $('qrBlock').style.display = '';
+    if (!shareOpen) {
+      updateQR(url);
+    } else {
+      qrTimer = setTimeout(function () { updateQR(url); }, 180);
+      syncQrActions(url);
+      updateShareTip(url);
+    }
+  }
+
+  function ensureQR(url) {
+    clearTimeout(qrTimer);
+    if (qrState.key !== qrKey(url)) updateQR(url);
+    return currentQrOK(url);
+  }
+
+  function qrBlob(cb) {
+    var canvas = $('qrCanvas');
+    if (qrState.blob) { cb(qrState.blob); return; }
+    if (canvas.toBlob) {
+      var key = qrState.key;
+      canvas.toBlob(function (blob) {
+        if (qrState.key !== key) blob = null;
+        if (blob) qrState.blob = blob;
+        cb(blob);
+      }, 'image/png');
+      return;
+    }
+    try {
+      var data = canvas.toDataURL('image/png');
+      var binary = atob(data.split(',')[1]);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      cb(new Blob([bytes], { type: 'image/png' }));
+    } catch (e) {
+      cb(null);
+    }
+  }
+
+  function downloadBlob(blob) {
+    var a = document.createElement('a');
+    var objectUrl = URL.createObjectURL(blob);
+    a.href = objectUrl;
+    a.download = '请假二维码.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 1500);
+  }
+
+  function saveQR() {
+    var url = currentLink();
+    if (LINK_MODE !== 'sync' || !ensureQR(url)) { toast('当前内容无法生成二维码'); return; }
+    qrBlob(function (blob) {
+      if (!blob) { toast('二维码生成失败，请重试'); return; }
+      downloadBlob(blob);
+      toast('二维码已保存');
+    });
+  }
+
+  function shareQR() {
+    var url = currentLink();
+    if (!ensureQR(url)) { toast('内容过长，暂时无法生成二维码'); return; }
+    qrBlob(function (blob) {
+      if (!blob) { toast('二维码生成失败，请重试'); return; }
+      var file = null;
+      try { file = new File([blob], '请假二维码.png', { type: 'image/png' }); } catch (e) {}
+      var canShareFile = false;
+      try {
+        canShareFile = !!(file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
+      } catch (e) {
+        canShareFile = false;
+      }
+      if (canShareFile) {
+        navigator.share({ files: [file], title: '请假单', text: '扫码查看请假单' })
+          .then(function () { toast('已调起转发'); })
+          .catch(function (err) {
+            if (err && err.name === 'AbortError') return;
+            downloadBlob(blob);
+            toast('当前环境无法直接分享，二维码已保存');
+          });
+      } else {
+        downloadBlob(blob);
+        toast('当前浏览器不支持图片分享，二维码已保存');
+      }
+    });
+  }
+
   function renderLinkText() {
     var url = currentLink();
     var i = url.indexOf('#');
     var head = i > -1 ? url.slice(0, i) : url;
     var tail = i > -1 ? url.slice(i) : '';
     $('linkBox').innerHTML = '<span class="u">' + esc(head) + '</span><span class="h">' + esc(tail) + '</span>';
-    if (LINK_MODE === 'sync') {
-      $('shareTip').innerHTML = '共 <b>' + url.length + '</b> 个字符，可直接发微信 / QQ；修改内容编码在 <b>#/?d=</b> 里，用同一份页面打开即可还原。' +
-        (url.length > MAX_URL_LEN ? '<br><b style="color:#d9534f">链接过长，微信/QQ 可能打不开，请减少附件。</b>' : '');
-    } else {
-      $('shareTip').innerHTML = '校方分享地址：<b>?id=…&amp;needApproval=1&amp;channel=WX&amp;userId=…&amp;appcode=CPDAILY</b> 为查询参数，末尾 <b>#/</b> 为哈希路由。';
-    }
     $('syncParams').style.display = LINK_MODE === 'sync' ? '' : 'none';
     $('officialParams').style.display = LINK_MODE === 'official' ? '' : 'none';
     if (document.activeElement !== $('pPrefix')) $('pPrefix').value = LINK_PREFIX;
+    queueQR(url);
     return url;
   }
 
@@ -1368,10 +2165,15 @@
   var fab = $('fab');
 
   function openShare() {
+    shareOpen = true;
+    document.body.classList.add('share-open');
     $('shareMask').classList.add('on');
     $('sharePanel').classList.add('on');
   }
   function closeShare() {
+    shareOpen = false;
+    document.body.classList.remove('share-open');
+    clearTimeout(qrTimer);
     $('shareMask').classList.remove('on');
     $('sharePanel').classList.remove('on');
   }
@@ -1427,8 +2229,13 @@
   }
 
   $('btnCopyLink').addEventListener('click', copyLink);
+  $('btnSaveQr').addEventListener('click', saveQR);
 
   $('btnSysShare').addEventListener('click', function () {
+    if (LINK_MODE === 'sync') {
+      shareQR();
+      return;
+    }
     var url = currentLink();
     if (navigator.share) {
       navigator.share({ title: '请假申请', text: '请假申请分享链接', url: url })
@@ -1461,5 +2268,31 @@
   if (!READONLY) setTimeout(function () { toast('点击带虚线的信息即可修改'); }, 700);
 })();
 </script>
+<style>
+  .boyaSevice{
+    position:fixed;
+    z-index:9998;
+    right:max(env(safe-area-inset-right, 0px), calc((100vw - 480px) / 2));
+    bottom:calc(env(safe-area-inset-bottom, 0px) + var(--s) * 240);
+    width:1em;
+    padding:calc(var(--s) * 20) calc(var(--s) * 12);
+    font-size:calc(var(--s) * 24);
+    background:#3399fe;
+    color:#fff;
+    box-sizing:initial;
+    border-radius:calc(var(--s) * 12) 0 0 calc(var(--s) * 12);
+    line-height:1.3;
+    box-shadow:calc(var(--s) * -4) 0 calc(var(--s) * 8) rgba(0,0,0,.1);
+    cursor:pointer;
+    text-decoration:none;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  .boyaSevice img{display:block;width:15px;height:auto;margin:0 auto calc(var(--s) * 7.5)}
+</style>
+<a class="boyaSevice" href="https://cjc.campusphere.net/wec-counselor-extend-apps/stu/homepage/boya/index.html" target="_blank" rel="noopener noreferrer" aria-label="打开智能客服">
+  <img width="15" alt="" src="data:image/png;base64,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">
+  智能客服
+</a>
 </body>
 </html>
