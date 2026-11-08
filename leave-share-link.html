@@ -85,8 +85,10 @@
     align-items:center;
     justify-content:center;
     padding-bottom:calc(var(--s) * 32);
+    font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,"Segoe UI",Arial,Roboto,"PingFang SC","Hiragino Sans GB","Microsoft Yahei",sans-serif;
   }
   .flag-status{
+    margin-top:calc(var(--s) * -10);
     display:inline-flex;
     align-items:center;
     gap:calc(var(--s) * 12);
@@ -102,11 +104,12 @@
   }
   .flag-title{
     font-size:calc(var(--s) * 64);
-    font-weight:600;
-    line-height:1.02;
-    letter-spacing:calc(var(--s) * 2);
-    margin-top:calc(var(--s) * 4);
-    text-shadow:0 calc(var(--s) * 2) calc(var(--s) * 10) rgba(0,0,0,.08);
+    font-style:normal;
+    font-weight:400;
+    line-height:1;
+    letter-spacing:calc(var(--s) * 8);
+    margin-top:calc(var(--s) * 10);
+    text-shadow:none;
   }
   /* 大标题下方的绿白斜纹循环动画带 */
   .dynamic-strip{
@@ -687,7 +690,7 @@
         </svg>
         <span>审批已通过</span>
       </div>
-      <div class="flag-title">已完成</div>
+      <div class="flag-title">正在休假中</div>
     </div>
     <div class="dynamic-strip">
       <div class="now-time" id="nowTime">当前时间:</div>
